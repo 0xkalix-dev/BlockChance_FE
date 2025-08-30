@@ -413,12 +413,21 @@ export const GameTimeline: React.FC<GameTimelineProps> = ({
                     </p>
                   )}
                   
-                  {/* Next round info during active rounds */}
+                  {/* Trading phase additional info */}
                   {game.status === 'active' && currentRound && currentRound.status === 'trading' && (
-                    <p className="text-sm text-purple-600 mt-1 flex items-center gap-1">
-                      ⚡ Round {currentRound.roundNumber + 1} starts after this round
-                    </p>
+                    <div className="text-xs text-gray-600 mt-2 space-y-1">
+                      <div>📈 Trading opened: {new Date(currentRound.startTime).toLocaleString('en-US', { 
+                        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+                      })}</div>
+                      <div>⏰ Trading closes: {new Date(currentRound.tradeCloseTime).toLocaleString('en-US', { 
+                        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+                      })}</div>
+                      <div>⚡ Round {currentRound.roundNumber + 1} starts: ~{new Date(new Date(currentRound.tradeCloseTime).getTime() + 5 * 60 * 1000).toLocaleString('en-US', { 
+                        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+                      })} (estimated)</div>
+                    </div>
                   )}
+                  
                 </div>
               </div>
 
@@ -436,8 +445,10 @@ export const GameTimeline: React.FC<GameTimelineProps> = ({
                             const totalTime = new Date(game.saleEndTime).getTime() - new Date(game.createdAt).getTime()
                             const elapsedTime = totalTime - (timeLeft * 1000)
                             return (elapsedTime / totalTime) * 100
-                          } else if (currentRound) {
-                            return (timeLeft / (game.config.roundDuration || 300)) * 100
+                          } else if (currentRound && currentRound.status === 'trading') {
+                            const totalTime = new Date(currentRound.tradeCloseTime).getTime() - new Date(currentRound.startTime).getTime()
+                            const elapsedTime = totalTime - (timeLeft * 1000)
+                            return (elapsedTime / totalTime) * 100
                           }
                           return 0
                         })())}%`
