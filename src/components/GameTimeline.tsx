@@ -144,22 +144,28 @@ export const GameTimeline: React.FC<GameTimelineProps> = ({
 
   // Calculate time left for current active phase
   useEffect(() => {
-    if (!currentRound || currentRound.status !== 'trading') {
-      setTimeLeft(0)
-      return
-    }
-
     const updateTimer = () => {
       const now = new Date()
-      const closeTime = new Date(currentRound.tradeCloseTime)
-      const remaining = Math.max(0, Math.floor((closeTime.getTime() - now.getTime()) / 1000))
+      let remaining = 0
+
+      // Mint phase timer
+      if (game.status === 'minting' && game.saleEndTime) {
+        const endTime = new Date(game.saleEndTime)
+        remaining = Math.max(0, Math.floor((endTime.getTime() - now.getTime()) / 1000))
+      }
+      // Round trading timer
+      else if (currentRound && currentRound.status === 'trading' && currentRound.tradeCloseTime) {
+        const closeTime = new Date(currentRound.tradeCloseTime)
+        remaining = Math.max(0, Math.floor((closeTime.getTime() - now.getTime()) / 1000))
+      }
+
       setTimeLeft(remaining)
     }
 
     updateTimer()
     const interval = setInterval(updateTimer, 1000)
     return () => clearInterval(interval)
-  }, [currentRound])
+  }, [game.status, game.saleEndTime, currentRound])
 
   // Find current active phase and auto-scroll to it
   useEffect(() => {
@@ -180,10 +186,20 @@ export const GameTimeline: React.FC<GameTimelineProps> = ({
   }, [phases])
 
   const formatTime = useCallback((seconds: number) => {
-    if (seconds === 0) return '00:00'
-    const mins = Math.floor(seconds / 60)
+    if (seconds === 0) return '00:00:00'
+    
+    const days = Math.floor(seconds / 86400) // 86400 = 24 * 60 * 60
+    const hours = Math.floor((seconds % 86400) / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
     const secs = seconds % 60
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    
+    if (days > 0) {
+      return `${days}d ${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    } else if (hours > 0) {
+      return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    } else {
+      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    }
   }, [])
 
   return (
@@ -249,7 +265,7 @@ export const GameTimeline: React.FC<GameTimelineProps> = ({
                         {phase.label}
                       </div>
                       
-                      {isActive && phase.type === 'round' && timeLeft > 0 && (
+                      {isActive && timeLeft > 0 && (phase.type === 'round' || phase.type === 'mint') && (
                         <motion.div
                           className={cn(
                             'text-xs font-mono mt-1 px-2 py-1 rounded',
@@ -327,7 +343,7 @@ export const GameTimeline: React.FC<GameTimelineProps> = ({
                         {phase.label}
                       </div>
                       
-                      {isActive && phase.type === 'round' && timeLeft > 0 && (
+                      {isActive && timeLeft > 0 && (phase.type === 'round' || phase.type === 'mint') && (
                         <motion.div
                           className={cn(
                             'font-mono font-bold px-2 py-1 rounded text-sm',
@@ -365,35 +381,48 @@ export const GameTimeline: React.FC<GameTimelineProps> = ({
               className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200"
             >
               <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-bold text-blue-800 mb-1">Current Phase</h4>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-blue-800 mb-1">Current Phase</h4>
+                    {timeLeft > 0 && (
+                      <div className="flex items-center gap-2 text-right">
+                        <Clock className="w-4 h-4 text-blue-600" />
+                        <motion.div
+                          className={cn(
+                            'text-lg md:text-xl font-mono font-bold',
+                            timeLeft <= 30 ? 'text-red-600' : 'text-blue-600'
+                          )}
+                          animate={timeLeft <= 30 ? { 
+                            scale: [1, 1.05, 1]
+                          } : {}}
+                          transition={{ duration: 1, repeat: timeLeft <= 30 ? Infinity : 0 }}
+                        >
+                          {formatTime(timeLeft)} remaining
+                        </motion.div>
+                      </div>
+                    )}
+                  </div>
                   <p className="text-sm text-blue-700">
                     {phases.find(p => p.id === currentPhaseId)?.description}
                   </p>
+                  
+                  {/* Trading start info for mint phase */}
+                  {game.status === 'minting' && game.config.saleEndTime && (
+                    <p className="text-sm text-green-600 mt-1 flex items-center gap-1">
+                      📈 Trading starts after mint ends
+                    </p>
+                  )}
+                  
+                  {/* Next round info during active rounds */}
+                  {game.status === 'active' && currentRound && currentRound.status === 'trading' && (
+                    <p className="text-sm text-purple-600 mt-1 flex items-center gap-1">
+                      ⚡ Round {currentRound.roundNumber + 1} starts after this round
+                    </p>
+                  )}
                 </div>
-                
-                {timeLeft > 0 && (
-                  <div className="text-right">
-                    <motion.div
-                      className={cn(
-                        'text-3xl md:text-4xl font-mono font-bold',
-                        timeLeft <= 30 ? 'text-red-600' : 'text-blue-600'
-                      )}
-                      animate={timeLeft <= 30 ? { 
-                        scale: [1, 1.1, 1]
-                      } : {}}
-                      transition={{ duration: 1, repeat: timeLeft <= 30 ? Infinity : 0 }}
-                    >
-                      {formatTime(timeLeft)}
-                    </motion.div>
-                    <div className="text-xs text-gray-600">
-                      {timeLeft <= 30 ? 'URGENT!' : 'until phase ends'}
-                    </div>
-                  </div>
-                )}
               </div>
 
-              {timeLeft > 0 && currentRound && (
+              {timeLeft > 0 && (
                 <div className="mt-3">
                   <div className="bg-gray-200 rounded-full h-2 overflow-hidden">
                     <motion.div
@@ -402,13 +431,43 @@ export const GameTimeline: React.FC<GameTimelineProps> = ({
                         timeLeft <= 30 ? 'bg-red-500' : 'bg-blue-500'
                       )}
                       style={{
-                        width: `${Math.max(0, (timeLeft / game.config.roundDuration) * 100)}%`
+                        width: `${Math.max(0, (() => {
+                          if (game.status === 'minting' && game.saleEndTime) {
+                            const totalTime = new Date(game.saleEndTime).getTime() - new Date(game.createdAt).getTime()
+                            const elapsedTime = totalTime - (timeLeft * 1000)
+                            return (elapsedTime / totalTime) * 100
+                          } else if (currentRound) {
+                            return (timeLeft / (game.config.roundDuration || 300)) * 100
+                          }
+                          return 0
+                        })())}%`
                       }}
                     />
                   </div>
                   <div className="flex justify-between text-xs text-gray-500 mt-1">
-                    <span>Phase started</span>
-                    <span>{timeLeft <= 30 ? '⚡ ENDING SOON!' : 'Trading closes'}</span>
+                    <span>{
+                      game.status === 'minting' 
+                        ? `Mint started ${new Date(game.createdAt).toLocaleString('en-US', { 
+                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+                          })}`
+                        : currentRound 
+                          ? `Round ${currentRound.roundNumber} started ${new Date(currentRound.startTime).toLocaleString('en-US', { 
+                              month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+                            })}`
+                          : 'Phase started'
+                    }</span>
+                    <span>{
+                      timeLeft <= 30 ? '⚡ ENDING SOON!' : 
+                      game.status === 'minting' && game.saleEndTime
+                        ? `Mint closes ${new Date(game.saleEndTime).toLocaleString('en-US', { 
+                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+                          })}`
+                        : currentRound && currentRound.tradeCloseTime
+                          ? `Trading closes ${new Date(currentRound.tradeCloseTime).toLocaleString('en-US', { 
+                              month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+                            })}`
+                          : game.status === 'minting' ? 'Mint closes' : 'Trading closes'
+                    }</span>
                   </div>
                 </div>
               )}
